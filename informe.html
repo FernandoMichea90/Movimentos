@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Informe CuentaRUT (Archivo Original)</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+    
+    const firebaseConfig = {
+      apiKey: "AIzaSyAr0LUxOZDzfkGdRVNCmiba2hf_ScsEOBg",
+      authDomain: "registroinforme-c6c47.firebaseapp.com",
+      projectId: "registroinforme-c6c47",
+      storageBucket: "registroinforme-c6c47.firebasestorage.app",
+      messagingSenderId: "956779980391",
+      appId: "1:956779980391:web:7bf2221c13cc0896c9d6c2",
+      measurementId: "G-GX0XZ5X244"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    
+    // Hacer las funciones disponibles globalmente
+    window.db = db;
+    window.collection = collection;
+    window.addDoc = addDoc;
+    window.getDocs = getDocs;
+    window.doc = doc;
+    window.updateDoc = updateDoc;
+    window.deleteDoc = deleteDoc;
+    window.query = query;
+    window.where = where;
+  </script>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-center text-blue-700">Informe de Movimientos CuentaRUT</h1>
+
+    <!-- Botón para gestionar alias -->
+    <div class="mb-6 text-center">
+      <button id="btn-gestionar-alias" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 mr-4">
+        Gestionar Alias y Categorías
+      </button>
+      <input type="file" id="upload" accept=".xlsx" class="inline-block" />
+    </div>
+
+    <!-- Modal para gestionar alias -->
+    <div id="modal-alias" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+      <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-y-auto">
+          <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-2xl font-bold">Gestión de Alias y Categorías</h2>
+              <button id="cerrar-modal" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            
+            <!-- Formulario para agregar nuevo alias -->
+            <div class="bg-gray-50 p-4 rounded-lg mb-6">
+              <h3 class="text-lg font-semibold mb-3">Agregar Nuevo Alias</h3>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="text" id="descripcion-original" placeholder="Descripción original (ej: COMPRA WEB PAYU UBER TRIP CL)" class="border rounded px-3 py-2" />
+                <input type="text" id="alias" placeholder="Alias (ej: Uber)" class="border rounded px-3 py-2" />
+                <select id="categoria" class="border rounded px-3 py-2">
+                  <option value="">Seleccionar categoría</option>
+                  <option value="Transporte">Transporte</option>
+                  <option value="Abarrotes">Abarrotes</option>
+                  <option value="Alimentación">Alimentación</option>
+                  <option value="Salud">Salud</option>
+                  <option value="Entretenimiento">Entretenimiento</option>
+                  <option value="Servicios">Servicios</option>
+                  <option value="Compras">Compras</option>
+                  <option value="Estudio">Estudio</option> 
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Otros">Otros</option>
+                </select>
+              </div>
+              <button id="agregar-alias" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Agregar Alias
+              </button>
+            </div>
+
+            <!-- Lista de alias existentes -->
+            <div>
+              <h3 class="text-lg font-semibold mb-3">Alias Existentes</h3>
+              <div class="overflow-x-auto">
+                <table id="tabla-alias" class="min-w-full text-sm text-left bg-white border border-gray-300">
+                  <thead class="bg-gray-100">
+                    <tr>
+                      <th class="border px-2 py-1">Descripción Original</th>
+                      <th class="border px-2 py-1">Alias</th>
+                      <th class="border px-2 py-1">Categoría</th>
+                      <th class="border px-2 py-1">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-alias">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="resumen" class="mb-8"></div>
+
+    <canvas id="grafico" class="mb-8"></canvas>
+
+    <h2 class="text-xl font-semibold mb-2">Movimientos Detallados</h2>
+    <div class="overflow-x-auto mb-8">
+      <table id="tabla-movimientos" class="min-w-full text-sm text-left bg-white border border-gray-300"></table>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-2">Resumen por Descripción</h2>
+    <div class="overflow-x-auto mb-8">
+      <table id="tabla-descripcion" class="min-w-full text-sm text-left bg-white border border-gray-300"></table>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-2">Resumen por Categoría</h2>
+    <div class="overflow-x-auto">
+      <table id="tabla-categoria" class="min-w-full text-sm text-left bg-white border border-gray-300"></table>
+    </div>
+  </div>
+
+<script>
+  // Variables globales
+  let aliasData = {}; // Almacenará los alias cargados desde Firebase
+  
+  // Función para cargar alias desde Firebase
+  async function cargarAlias() {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'alias'));
+      aliasData = {};
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        aliasData[data.descripcionOriginal] = {
+          id: doc.id,
+          alias: data.alias,
+          categoria: data.categoria
+        };
+      });
+      console.log('Alias cargados:', aliasData);
+    } catch (error) {
+      console.error('Error cargando alias:', error);
+    }
+  }
+
+  // Función para agregar nuevo alias
+  async function agregarAlias(descripcionOriginal, alias, categoria) {
+    try {
+      const docRef = await addDoc(collection(db, 'alias'), {
+        descripcionOriginal: descripcionOriginal,
+        alias: alias,
+        categoria: categoria,
+        fechaCreacion: new Date()
+      });
+      console.log('Alias agregado con ID:', docRef.id);
+      cargarAlias(); // Recargar la lista
+      mostrarAlias(); // Actualizar la tabla
+    } catch (error) {
+      console.error('Error agregando alias:', error);
+      alert('Error al agregar el alias: ' + error.message);
+    }
+  }
+
+  // Función para eliminar alias
+  async function eliminarAlias(id) {
+    try {
+      await deleteDoc(doc(db, 'alias', id));
+      console.log('Alias eliminado');
+      cargarAlias(); // Recargar la lista
+      mostrarAlias(); // Actualizar la tabla
+    } catch (error) {
+      console.error('Error eliminando alias:', error);
+      alert('Error al eliminar el alias: ' + error.message);
+    }
+  }
+
+  // Función para mostrar alias en la tabla
+  async function mostrarAlias() {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'alias'));
+      const tbody = document.getElementById('tbody-alias');
+      tbody.innerHTML = '';
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="border px-2 py-1">${data.descripcionOriginal}</td>
+          <td class="border px-2 py-1 font-semibold text-blue-600">${data.alias}</td>
+          <td class="border px-2 py-1">
+            <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${data.categoria}</span>
+          </td>
+          <td class="border px-2 py-1">
+            <button onclick="eliminarAlias('${doc.id}')" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">
+              Eliminar
+            </button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    } catch (error) {
+      console.error('Error mostrando alias:', error);
+    }
+  }
+
+  // Función para obtener alias y categoría de una descripción
+  function obtenerAliasYCategoria(descripcion) {
+    // Buscar coincidencia exacta primero
+    if (aliasData[descripcion]) {
+      return aliasData[descripcion];
+    }
+    
+    // Buscar coincidencias parciales
+    for (const [descOriginal, data] of Object.entries(aliasData)) {
+      if (descripcion.includes(descOriginal) || descOriginal.includes(descripcion)) {
+        return data;
+      }
+    }
+    
+    return { alias: descripcion, categoria: 'Sin categorizar' };
+  }
+
+  // Event listeners para el modal de alias
+  document.getElementById('btn-gestionar-alias').addEventListener('click', function() {
+    document.getElementById('modal-alias').classList.remove('hidden');
+    cargarAlias();
+    mostrarAlias();
+  });
+
+  document.getElementById('cerrar-modal').addEventListener('click', function() {
+    document.getElementById('modal-alias').classList.add('hidden');
+  });
+
+  // Cerrar modal al hacer clic fuera
+  document.getElementById('modal-alias').addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.add('hidden');
+    }
+  });
+
+  document.getElementById('agregar-alias').addEventListener('click', function() {
+    const descripcionOriginal = document.getElementById('descripcion-original').value.trim();
+    const alias = document.getElementById('alias').value.trim();
+    const categoria = document.getElementById('categoria').value;
+    
+    if (!descripcionOriginal || !alias || !categoria) {
+      alert('Por favor completa todos los campos');
+      return;
+    }
+    
+    agregarAlias(descripcionOriginal, alias, categoria);
+    
+    // Limpiar formulario
+    document.getElementById('descripcion-original').value = '';
+    document.getElementById('alias').value = '';
+    document.getElementById('categoria').value = '';
+  });
+
+  document.getElementById('upload').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = async function (event) {
+      // Cargar alias antes de procesar
+      await cargarAlias();
+      
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+      // Buscar el inicio de los datos (donde aparece "Detalle de Movimientos")
+      const startIndex = json.findIndex(row => row.includes("Detalle de Movimientos"));
+      const headersIndex = startIndex + 1;
+      const dataIndex = startIndex + 2;
+
+      const headers = json[headersIndex];
+      const rows = json.slice(dataIndex).filter(row => {
+        // Solo incluir filas que tengan fecha válida y no contengan "saldo"
+        const fechaStr = row[0];
+        return fechaStr && 
+               String(fechaStr).trim() !== "" && 
+               !String(fechaStr).toLowerCase().includes("saldo") &&
+               (fechaStr.includes("/") || fechaStr.includes("-"));
+      });
+
+      const movimientos = rows.map(row => {
+        const fechaStr = row[0];
+        let fecha;
+        
+        // Manejar diferentes formatos de fecha
+        if (fechaStr.includes("/")) {
+          // Formato DD/MM o DD/MM/YYYY
+          const partes = fechaStr.split("/");
+          if (partes.length === 2) {
+            // Solo día y mes, agregar año actual
+            fecha = new Date(`${partes[1]}/${partes[0]}/2024`);
+          } else if (partes.length === 3) {
+            // Día, mes y año completos
+            fecha = new Date(`${partes[1]}/${partes[0]}/${partes[2]}`);
+          }
+        } else if (fechaStr.includes("-")) {
+          // Formato YYYY-MM-DD
+          fecha = new Date(fechaStr);
+        }
+        
+        const descripcion = row[2];
+        const aliasInfo = obtenerAliasYCategoria(descripcion);
+        
+        return {
+          Fecha: fecha,
+          "N° Operación": row[1],
+          Descripción: descripcion,
+          Alias: aliasInfo.alias,
+          Categoría: aliasInfo.categoria,
+          Abonos: parseFloat((row[3] || "0").toString().replace(/\./g, "")) || 0,
+          Cargos: parseFloat((row[4] || "0").toString().replace(/\./g, "")) || 0,
+          Saldo: parseFloat((row[5] || "0").toString().replace(/\./g, "")) || 0,
+        }
+      }).filter(mov => mov.Fecha && !isNaN(mov.Fecha.getTime())); // Filtrar fechas inválidas
+
+      const fechas = movimientos.map(m => m.Fecha);
+      const saldos = movimientos.map(m => m.Saldo);
+
+      // Gráfico
+      const ctx = document.getElementById('grafico').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: fechas.map(f => f.toLocaleDateString()),
+          datasets: [{
+            label: 'Saldo $',
+            data: saldos,
+            borderColor: 'rgb(59, 130, 246)',
+            tension: 0.2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: false } }
+        }
+      });
+
+      // Tabla movimientos
+      const tabla = document.getElementById('tabla-movimientos');
+      tabla.innerHTML = `
+        <thead class="bg-blue-100">
+          <tr>
+            <th class="border px-2 py-1">Fecha</th>
+            <th class="border px-2 py-1">N° Operación</th>
+            <th class="border px-2 py-1">Descripción</th>
+            <th class="border px-2 py-1">Alias</th>
+            <th class="border px-2 py-1">Categoría</th>
+            <th class="border px-2 py-1">Abonos</th>
+            <th class="border px-2 py-1">Cargos</th>
+            <th class="border px-2 py-1">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${movimientos.map(row => `<tr>
+            <td class="border px-2 py-1">${row.Fecha.toLocaleDateString()}</td>
+            <td class="border px-2 py-1">${row["N° Operación"]}</td>
+            <td class="border px-2 py-1 text-xs">${row.Descripción}</td>
+            <td class="border px-2 py-1 font-semibold text-blue-600">${row.Alias}</td>
+            <td class="border px-2 py-1">
+              <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${row.Categoría}</span>
+            </td>
+            <td class="border px-2 py-1">${row.Abonos.toLocaleString('es-CL')}</td>
+            <td class="border px-2 py-1">${row.Cargos.toLocaleString('es-CL')}</td>
+            <td class="border px-2 py-1">${row.Saldo.toLocaleString('es-CL')}</td>
+          </tr>`).join('')}
+        </tbody>`;
+
+      // Agrupar por descripción
+      const agrupados = {};
+      movimientos.forEach(m => {
+        const key = m.Descripción || "Sin descripción";
+        if (!agrupados[key]) agrupados[key] = { 
+          descripcion: key, 
+          alias: m.Alias,
+          categoria: m.Categoría,
+          cargos: 0, 
+          abonos: 0, 
+          cantidad: 0 
+        };
+        agrupados[key].cargos += m.Cargos;
+        agrupados[key].abonos += m.Abonos;
+        agrupados[key].cantidad++;
+      });
+      const resumenArray = Object.values(agrupados);
+      const tablaDesc = document.getElementById('tabla-descripcion');
+      tablaDesc.innerHTML = `
+        <thead class="bg-blue-100">
+          <tr>
+            <th class="border px-2 py-1">Descripción</th>
+            <th class="border px-2 py-1">Alias</th>
+            <th class="border px-2 py-1">Categoría</th>
+            <th class="border px-2 py-1">Total Cargos</th>
+            <th class="border px-2 py-1">Total Abonos</th>
+            <th class="border px-2 py-1">Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${resumenArray.map(r => `
+            <tr>
+              <td class="border px-2 py-1 text-xs">${r.descripcion}</td>
+              <td class="border px-2 py-1 font-semibold text-blue-600">${r.alias}</td>
+              <td class="border px-2 py-1">
+                <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${r.categoria}</span>
+              </td>
+              <td class="border px-2 py-1">${r.cargos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1">${r.abonos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1 text-center">${r.cantidad}</td>
+            </tr>`).join('')}
+        </tbody>`;
+
+      // Agrupar por categoría
+      const agrupadosCategoria = {};
+      movimientos.forEach(m => {
+        const categoria = m.Categoría || "Sin categorizar";
+        if (!agrupadosCategoria[categoria]) agrupadosCategoria[categoria] = { 
+          categoria: categoria,
+          cargos: 0, 
+          abonos: 0, 
+          cantidad: 0 
+        };
+        agrupadosCategoria[categoria].cargos += m.Cargos;
+        agrupadosCategoria[categoria].abonos += m.Abonos;
+        agrupadosCategoria[categoria].cantidad++;
+      });
+      const resumenCategoria = Object.values(agrupadosCategoria).sort((a, b) => b.cargos - a.cargos);
+      const tablaCategoria = document.getElementById('tabla-categoria');
+      tablaCategoria.innerHTML = `
+        <thead class="bg-blue-100">
+          <tr>
+            <th class="border px-2 py-1">Categoría</th>
+            <th class="border px-2 py-1">Total Cargos</th>
+            <th class="border px-2 py-1">Total Abonos</th>
+            <th class="border px-2 py-1">Cantidad</th>
+            <th class="border px-2 py-1">% del Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${resumenCategoria.map(r => {
+            const porcentaje = ((r.cargos / totalCargos) * 100).toFixed(1);
+            return `
+            <tr>
+              <td class="border px-2 py-1">
+                <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${r.categoria}</span>
+              </td>
+              <td class="border px-2 py-1">${r.cargos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1">${r.abonos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1 text-center">${r.cantidad}</td>
+              <td class="border px-2 py-1 text-center">${porcentaje}%</td>
+            </tr>`;
+          }).join('')}
+        </tbody>`;
+
+      // Resumen general
+      const totalCargos = resumenArray.reduce((a, b) => a + b.cargos, 0);
+      const totalAbonos = resumenArray.reduce((a, b) => a + b.abonos, 0);
+      const saldoFinal = saldos[0];
+      const saldoInicial = saldos[saldos.length - 1];
+      document.getElementById('resumen').innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div class="bg-white p-4 rounded shadow"><strong>Saldo Inicial:</strong><br>$${saldoInicial.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Saldo Final:</strong><br>$${saldoFinal.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Total Cargos:</strong><br>$${totalCargos.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Total Abonos:</strong><br>$${totalAbonos.toLocaleString('es-CL')}</div>
+        </div>`;
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+
+  // Inicializar alias al cargar la página
+  document.addEventListener('DOMContentLoaded', function() {
+    cargarAlias();
+  });
+</script>
+</body>
+</html>

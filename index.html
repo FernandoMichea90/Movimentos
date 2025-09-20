@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Informe CuentaRUT</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-center text-blue-700">Informe de Movimientos CuentaRUT</h1>
+
+    <input type="file" id="upload" accept=".xlsx" class="mb-6" />
+
+    <div id="resumen" class="mb-8"></div>
+
+    <canvas id="grafico" class="mb-8"></canvas>
+
+    <h2 class="text-xl font-semibold mb-2">Movimientos Detallados</h2>
+    <div class="overflow-x-auto mb-8">
+      <table id="tabla-movimientos" class="min-w-full text-sm text-left bg-white border border-gray-300"></table>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-2">Resumen por Descripción</h2>
+    <div class="overflow-x-auto">
+      <table id="tabla-descripcion" class="min-w-full text-sm text-left bg-white border border-gray-300"></table>
+    </div>
+  </div>
+
+<script>
+  document.getElementById('upload').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = function (event) {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[1]]; // Hoja "Movimientos"
+      const json = XLSX.utils.sheet_to_json(sheet);
+
+      const movimientos = json.filter(m => m.Fecha && !isNaN(Date.parse(m.Fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'))));
+      const fechas = movimientos.map(m => new Date(m.Fecha.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3')));
+      const saldos = movimientos.map(m => m["Saldo $"]);
+
+      // Crear grafico
+      const ctx = document.getElementById('grafico').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: fechas.map(f => f.toLocaleDateString()),
+          datasets: [{
+            label: 'Saldo $',
+            data: saldos,
+            borderColor: 'rgb(59, 130, 246)',
+            tension: 0.2,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: false } }
+        }
+      });
+
+      // Tabla de movimientos
+      const tabla = document.getElementById('tabla-movimientos');
+      const headers = Object.keys(movimientos[0]);
+      tabla.innerHTML = `
+        <thead class="bg-blue-100">
+          <tr>${headers.map(h => `<th class="border px-2 py-1">${h}</th>`).join('')}</tr>
+        </thead>
+        <tbody>
+          ${movimientos.map(row => `<tr>${headers.map(h => `<td class="border px-2 py-1">${row[h] || ''}</td>`).join('')}</tr>`).join('')}
+        </tbody>`;
+
+      // Agrupar por descripcion
+      const agrupados = {};
+      movimientos.forEach(m => {
+        const d = m.Descripción || "Sin descripción";
+        agrupados[d] = agrupados[d] || { descripcion: d, cargos: 0, abonos: 0, cantidad: 0 };
+        agrupados[d].cargos += +m["Cheques / Cargos $"] || 0;
+        agrupados[d].abonos += +m["Depósitos / Abonos $"] || 0;
+        agrupados[d].cantidad++;
+      });
+
+      const resumenArray = Object.values(agrupados);
+      const tablaDesc = document.getElementById('tabla-descripcion');
+      tablaDesc.innerHTML = `
+        <thead class="bg-blue-100">
+          <tr>
+            <th class="border px-2 py-1">Descripción</th>
+            <th class="border px-2 py-1">Total Cargos</th>
+            <th class="border px-2 py-1">Total Abonos</th>
+            <th class="border px-2 py-1">Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${resumenArray.map(r => `
+            <tr>
+              <td class="border px-2 py-1">${r.descripcion}</td>
+              <td class="border px-2 py-1">${r.cargos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1">${r.abonos.toLocaleString('es-CL')}</td>
+              <td class="border px-2 py-1 text-center">${r.cantidad}</td>
+            </tr>`).join('')}
+        </tbody>`;
+
+      // Mostrar resumen general
+      const totalCargos = resumenArray.reduce((a, b) => a + b.cargos, 0);
+      const totalAbonos = resumenArray.reduce((a, b) => a + b.abonos, 0);
+      const saldoFinal = saldos[0];
+      const saldoInicial = saldos[saldos.length - 1];
+      document.getElementById('resumen').innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div class="bg-white p-4 rounded shadow"><strong>Saldo Inicial:</strong><br>$${saldoInicial.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Saldo Final:</strong><br>$${saldoFinal.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Total Cargos:</strong><br>$${totalCargos.toLocaleString('es-CL')}</div>
+          <div class="bg-white p-4 rounded shadow"><strong>Total Abonos:</strong><br>$${totalAbonos.toLocaleString('es-CL')}</div>
+        </div>`;
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+</script>
+</body>
+</html>
