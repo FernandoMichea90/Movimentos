@@ -66,17 +66,7 @@
                 <input type="text" id="descripcion-original" placeholder="Descripción original (ej: COMPRA WEB PAYU UBER TRIP CL)" class="border rounded px-3 py-2" />
                 <input type="text" id="alias" placeholder="Alias (ej: Uber)" class="border rounded px-3 py-2" />
                 <select id="categoria" class="border rounded px-3 py-2">
-                  <option value="">Seleccionar categoría</option>
-                  <option value="Transporte">Transporte</option>
-                  <option value="Abarrotes">Abarrotes</option>
-                  <option value="Alimentación">Alimentación</option>
-                  <option value="Salud">Salud</option>
-                  <option value="Entretenimiento">Entretenimiento</option>
-                  <option value="Servicios">Servicios</option>
-                  <option value="Compras">Compras</option>
-                  <option value="Estudio">Estudio</option> 
-                  <option value="Transferencia">Transferencia</option>
-                  <option value="Otros">Otros</option>
+                  <!-- Las opciones se generan dinámicamente -->
                 </select>
               </div>
               <button id="agregar-alias" class="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
@@ -107,9 +97,85 @@
       </div>
     </div>
 
+    <!-- Modal para editar alias -->
+    <div id="modal-editar-alias" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+      <div class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white rounded-lg max-w-2xl w-full">
+          <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-2xl font-bold">Editar Alias</h2>
+              <button id="cerrar-modal-editar" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            
+            <form id="form-editar-alias">
+              <input type="hidden" id="edit-alias-id" />
+              <div class="grid grid-cols-1 gap-4 mb-4">
+                <div>
+                  <label class="block text-sm font-medium mb-2">Descripción Original:</label>
+                  <input type="text" id="edit-descripcion-original" class="w-full border rounded px-3 py-2" readonly />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-2">Alias:</label>
+                  <input type="text" id="edit-alias" placeholder="Nuevo alias" class="w-full border rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-2">Categoría:</label>
+                  <select id="edit-categoria" class="w-full border rounded px-3 py-2">
+                    <!-- Las opciones se generan dinámicamente -->
+                  </select>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                  Guardar Cambios
+                </button>
+                <button type="button" id="cancelar-edicion" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="resumen" class="mb-8"></div>
 
-    <canvas id="grafico" class="mb-8"></canvas>
+    <!-- Resumen de totales -->
+    <div id="totales" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="bg-green-100 p-6 rounded-lg shadow text-center">
+        <h3 class="text-lg font-semibold text-green-800 mb-2">Total Abonos</h3>
+        <p id="total-abonos" class="text-2xl font-bold text-green-600">$0</p>
+      </div>
+      <div class="bg-red-100 p-6 rounded-lg shadow text-center">
+        <h3 class="text-lg font-semibold text-red-800 mb-2">Total Gastos</h3>
+        <p id="total-gastos" class="text-2xl font-bold text-red-600">$0</p>
+      </div>
+      <div class="bg-blue-100 p-6 rounded-lg shadow text-center">
+        <h3 class="text-lg font-semibold text-blue-800 mb-2">Balance</h3>
+        <p id="balance" class="text-2xl font-bold text-blue-600">$0</p>
+      </div>
+    </div>
+
+    <!-- Selector de gráficos -->
+    <div class="mb-6 text-center">
+      <div class="inline-flex bg-gray-200 rounded-lg p-1">
+        <button id="btn-grafico-lineal" class="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white">
+          Gráfico Lineal
+        </button>
+        <button id="btn-grafico-circular" class="px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-300">
+          Gráfico Circular
+        </button>
+        <button id="btn-grafico-barras" class="px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-300">
+          Gráfico de Barras
+        </button>
+      </div>
+    </div>
+
+    <!-- Contenedor de gráficos -->
+    <div class="mb-8 relative max-w-4xl mx-auto">
+      <canvas id="grafico" class="w-full" style="max-height: 500px;"></canvas>
+    </div>
 
     <h2 class="text-xl font-semibold mb-2">Movimientos Detallados</h2>
     <div class="overflow-x-auto mb-8">
@@ -130,6 +196,43 @@
 <script>
   // Variables globales
   let aliasData = {}; // Almacenará los alias cargados desde Firebase
+  let graficoActual = null; // Referencia al gráfico actual
+  let movimientosGlobales = []; // Almacenar movimientos para los gráficos
+  
+  // Categorías centralizadas
+  const categorias = [
+    'Transporte',
+    'Abarrotes',
+    'Alimentación',
+    'Salud',
+    'Entretenimiento',
+    'Servicios',
+    'Compras',
+    'Estudio',
+    'Transferencia',
+    'Educación',
+    'Hogar',
+    'Ropa',
+    'Tecnología',
+    'Otros'
+  ];
+  
+  // Función para generar opciones de categorías
+  function generarOpcionesCategorias(selectId, categoriaSeleccionada = '') {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    
+    select.innerHTML = '<option value="">Seleccionar categoría</option>';
+    categorias.forEach(categoria => {
+      const option = document.createElement('option');
+      option.value = categoria;
+      option.textContent = categoria;
+      if (categoria === categoriaSeleccionada) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  }
   
   // Función para cargar alias desde Firebase
   async function cargarAlias() {
@@ -181,6 +284,24 @@
     }
   }
 
+  // Función para actualizar alias
+  async function actualizarAlias(id, nuevoAlias, nuevaCategoria) {
+    try {
+      const aliasRef = doc(db, 'alias', id);
+      await updateDoc(aliasRef, {
+        alias: nuevoAlias,
+        categoria: nuevaCategoria,
+        fechaModificacion: new Date()
+      });
+      console.log('Alias actualizado');
+      cargarAlias(); // Recargar la lista
+      mostrarAlias(); // Actualizar la tabla
+    } catch (error) {
+      console.error('Error actualizando alias:', error);
+      alert('Error al actualizar el alias: ' + error.message);
+    }
+  }
+
   // Función para mostrar alias en la tabla
   async function mostrarAlias() {
     try {
@@ -198,9 +319,16 @@
             <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${data.categoria}</span>
           </td>
           <td class="border px-2 py-1">
-            <button onclick="eliminarAlias('${doc.id}')" class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">
-              Eliminar
-            </button>
+            <div class="flex gap-2">
+              <button onclick="editarAlias('${doc.id}', '${data.descripcionOriginal}', '${data.alias}', '${data.categoria}')" 
+                      class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">
+                Editar
+              </button>
+              <button onclick="eliminarAlias('${doc.id}')" 
+                      class="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600">
+                Eliminar
+              </button>
+            </div>
           </td>
         `;
         tbody.appendChild(row);
@@ -227,9 +355,255 @@
     return { alias: descripcion, categoria: 'Sin categorizar' };
   }
 
+  // Función para abrir modal de edición
+  function editarAlias(id, descripcionOriginal, alias, categoria) {
+    document.getElementById('edit-alias-id').value = id;
+    document.getElementById('edit-descripcion-original').value = descripcionOriginal;
+    document.getElementById('edit-alias').value = alias;
+    
+    // Generar opciones del select con la categoría seleccionada
+    generarOpcionesCategorias('edit-categoria', categoria);
+    
+    document.getElementById('modal-editar-alias').classList.remove('hidden');
+  }
+
+  // Función para actualizar los totales
+  function actualizarTotales(movimientos) {
+    const totalAbonos = movimientos.reduce((sum, m) => sum + m.Abonos, 0);
+    const totalGastos = movimientos.reduce((sum, m) => sum + m.Cargos, 0);
+    const balance = totalAbonos - totalGastos;
+    
+    document.getElementById('total-abonos').textContent = '$' + totalAbonos.toLocaleString('es-CL');
+    document.getElementById('total-gastos').textContent = '$' + totalGastos.toLocaleString('es-CL');
+    document.getElementById('balance').textContent = '$' + balance.toLocaleString('es-CL');
+    
+    // Cambiar color del balance según si es positivo o negativo
+    const balanceElement = document.getElementById('balance');
+    if (balance >= 0) {
+      balanceElement.className = 'text-2xl font-bold text-green-600';
+    } else {
+      balanceElement.className = 'text-2xl font-bold text-red-600';
+    }
+  }
+
+  // Función para crear gráfico lineal
+  function crearGraficoLineal(movimientos) {
+    const ctx = document.getElementById('grafico').getContext('2d');
+    
+    if (graficoActual) {
+      graficoActual.destroy();
+    }
+    
+    const fechas = movimientos.map(m => m.Fecha);
+    const saldos = movimientos.map(m => m.Saldo);
+    
+    graficoActual = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: fechas.map(f => f.toLocaleDateString()),
+        datasets: [{
+          label: 'Saldo $',
+          data: saldos,
+          borderColor: 'rgb(59, 130, 246)',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          tension: 0.2,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { 
+          y: { 
+            beginAtZero: false,
+            ticks: {
+              callback: function(value) {
+                return '$' + value.toLocaleString('es-CL');
+              }
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Saldo: $' + context.parsed.y.toLocaleString('es-CL');
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Función para crear gráfico circular
+  function crearGraficoCircular(movimientos) {
+    const ctx = document.getElementById('grafico').getContext('2d');
+    
+    if (graficoActual) {
+      graficoActual.destroy();
+    }
+    
+    // Agrupar gastos por categoría
+    const gastosPorCategoria = {};
+    movimientos.forEach(m => {
+      if (m.Cargos > 0) {
+        const categoria = m.Categoría || 'Sin categorizar';
+        gastosPorCategoria[categoria] = (gastosPorCategoria[categoria] || 0) + m.Cargos;
+      }
+    });
+    
+    const labels = Object.keys(gastosPorCategoria);
+    const data = Object.values(gastosPorCategoria);
+    const colores = [
+      '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+      '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
+      '#36A2EB', '#FFCE56', '#9966FF', '#FF9F40'
+    ];
+    
+    graficoActual = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: colores.slice(0, labels.length),
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              boxWidth: 15,
+              padding: 15,
+              font: {
+                size: 12
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                const porcentaje = ((context.parsed / total) * 100).toFixed(1);
+                return context.label + ': $' + context.parsed.toLocaleString('es-CL') + ' (' + porcentaje + '%)';
+              }
+            }
+          }
+        },
+        elements: {
+          arc: {
+            borderWidth: 2
+          }
+        }
+      }
+    });
+  }
+
+  // Función para crear gráfico de barras
+  function crearGraficoBarras(movimientos) {
+    const ctx = document.getElementById('grafico').getContext('2d');
+    
+    if (graficoActual) {
+      graficoActual.destroy();
+    }
+    
+    // Agrupar gastos por categoría
+    const gastosPorCategoria = {};
+    movimientos.forEach(m => {
+      if (m.Cargos > 0) {
+        const categoria = m.Categoría || 'Sin categorizar';
+        gastosPorCategoria[categoria] = (gastosPorCategoria[categoria] || 0) + m.Cargos;
+      }
+    });
+    
+    // Ordenar por cantidad de gastos
+    const sortedCategories = Object.entries(gastosPorCategoria)
+      .sort(([,a], [,b]) => b - a);
+    
+    const labels = sortedCategories.map(([categoria]) => categoria);
+    const data = sortedCategories.map(([,gastos]) => gastos);
+    
+    graficoActual = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Gastos por Categoría',
+          data: data,
+          backgroundColor: 'rgba(239, 68, 68, 0.8)',
+          borderColor: 'rgba(239, 68, 68, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return '$' + value.toLocaleString('es-CL');
+              }
+            }
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Gastos: $' + context.parsed.y.toLocaleString('es-CL');
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Función para cambiar el estilo de los botones de gráficos
+  function actualizarBotonesGraficos(botonActivo) {
+    const botones = ['btn-grafico-lineal', 'btn-grafico-circular', 'btn-grafico-barras'];
+    
+    botones.forEach(id => {
+      const boton = document.getElementById(id);
+      if (id === botonActivo) {
+        boton.className = 'px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white';
+      } else {
+        boton.className = 'px-4 py-2 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-300';
+      }
+    });
+  }
+
+  // Event listeners para los botones de gráficos
+  document.getElementById('btn-grafico-lineal').addEventListener('click', function() {
+    actualizarBotonesGraficos('btn-grafico-lineal');
+    crearGraficoLineal(movimientosGlobales);
+  });
+
+  document.getElementById('btn-grafico-circular').addEventListener('click', function() {
+    actualizarBotonesGraficos('btn-grafico-circular');
+    crearGraficoCircular(movimientosGlobales);
+  });
+
+  document.getElementById('btn-grafico-barras').addEventListener('click', function() {
+    actualizarBotonesGraficos('btn-grafico-barras');
+    crearGraficoBarras(movimientosGlobales);
+  });
+
   // Event listeners para el modal de alias
   document.getElementById('btn-gestionar-alias').addEventListener('click', function() {
     document.getElementById('modal-alias').classList.remove('hidden');
+    
+    // Generar opciones para el select de categorías
+    generarOpcionesCategorias('categoria');
+    
     cargarAlias();
     mostrarAlias();
   });
@@ -261,6 +635,39 @@
     document.getElementById('descripcion-original').value = '';
     document.getElementById('alias').value = '';
     document.getElementById('categoria').value = '';
+  });
+
+  // Event listeners para el modal de edición
+  document.getElementById('cerrar-modal-editar').addEventListener('click', function() {
+    document.getElementById('modal-editar-alias').classList.add('hidden');
+  });
+
+  document.getElementById('cancelar-edicion').addEventListener('click', function() {
+    document.getElementById('modal-editar-alias').classList.add('hidden');
+  });
+
+  // Cerrar modal de edición al hacer clic fuera
+  document.getElementById('modal-editar-alias').addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.add('hidden');
+    }
+  });
+
+  // Manejar envío del formulario de edición
+  document.getElementById('form-editar-alias').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const id = document.getElementById('edit-alias-id').value;
+    const nuevoAlias = document.getElementById('edit-alias').value.trim();
+    const nuevaCategoria = document.getElementById('edit-categoria').value;
+    
+    if (!nuevoAlias || !nuevaCategoria) {
+      alert('Por favor completa todos los campos');
+      return;
+    }
+    
+    actualizarAlias(id, nuevoAlias, nuevaCategoria);
+    document.getElementById('modal-editar-alias').classList.add('hidden');
   });
 
   document.getElementById('upload').addEventListener('change', function (e) {
@@ -326,28 +733,15 @@
         }
       }).filter(mov => mov.Fecha && !isNaN(mov.Fecha.getTime())); // Filtrar fechas inválidas
 
-      const fechas = movimientos.map(m => m.Fecha);
-      const saldos = movimientos.map(m => m.Saldo);
+      // Guardar movimientos globalmente para los gráficos
+      movimientosGlobales = movimientos;
 
-      // Gráfico
-      const ctx = document.getElementById('grafico').getContext('2d');
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: fechas.map(f => f.toLocaleDateString()),
-          datasets: [{
-            label: 'Saldo $',
-            data: saldos,
-            borderColor: 'rgb(59, 130, 246)',
-            tension: 0.2,
-            fill: false
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: { y: { beginAtZero: false } }
-        }
-      });
+      // Actualizar totales
+      actualizarTotales(movimientos);
+
+      // Crear gráfico lineal por defecto
+      actualizarBotonesGraficos('btn-grafico-lineal');
+      crearGraficoLineal(movimientos);
 
       // Tabla movimientos
       const tabla = document.getElementById('tabla-movimientos');
@@ -483,6 +877,10 @@
 
   // Inicializar alias al cargar la página
   document.addEventListener('DOMContentLoaded', function() {
+    // Generar opciones para ambos selects
+    generarOpcionesCategorias('categoria');
+    generarOpcionesCategorias('edit-categoria');
+    
     cargarAlias();
   });
 </script>
