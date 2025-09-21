@@ -689,6 +689,50 @@
       const dataIndex = startIndex + 2;
 
       const headers = json[headersIndex];
+      
+      // Detectar automáticamente los índices de las columnas
+      const encontrarIndiceColumna = (titulos, palabraClave) => {
+        for (let i = 0; i < titulos.length; i++) {
+          if (titulos[i] && titulos[i].toString().toLowerCase().includes(palabraClave.toLowerCase())) {
+            return i;
+          }
+        }
+        return -1;
+      };
+      
+      const indiceAbonos = encontrarIndiceColumna(headers, 'abono');
+      const indiceCargos = encontrarIndiceColumna(headers, 'cargo');
+      const indiceSaldo = encontrarIndiceColumna(headers, 'saldo');
+      
+      // Fallback para casos donde no se encuentran las columnas
+      let indiceAbonosFinal = indiceAbonos !== -1 ? indiceAbonos : 4;
+      let indiceCargosFinal = indiceCargos !== -1 ? indiceCargos : 3;
+      let indiceSaldoFinal = indiceSaldo !== -1 ? indiceSaldo : 5;
+      
+      // Función para procesar valores financieros
+      const procesarValorFinanciero = (valor) => {
+        if (!valor || valor === "") return 0;
+        const valorLimpio = valor.toString().replace(/\./g, "");
+        const valorNumerico = parseFloat(valorLimpio);
+        return isNaN(valorNumerico) ? 0 : Math.abs(valorNumerico); // Usar valor absoluto
+      };
+      
+      console.log('Índices detectados:', {
+        abonos: indiceAbonos,
+        cargos: indiceCargos,
+        saldo: indiceSaldo,
+        abonosFinal: indiceAbonosFinal,
+        cargosFinal: indiceCargosFinal,
+        saldoFinal: indiceSaldoFinal,
+        headers: headers
+      });
+      
+      console.log('Columnas detectadas:', {
+        columnaAbonos: headers[indiceAbonosFinal] || 'No encontrada',
+        columnaCargos: headers[indiceCargosFinal] || 'No encontrada',
+        columnaSaldo: headers[indiceSaldoFinal] || 'No encontrada'
+      });
+      
       const rows = json.slice(dataIndex).filter(row => {
         // Solo incluir filas que tengan fecha válida y no contengan "saldo"
         const fechaStr = row[0];
@@ -721,15 +765,53 @@
         const descripcion = row[2];
         const aliasInfo = obtenerAliasYCategoria(descripcion);
         
+        // Obtener valores de las columnas usando índices detectados
+        const valorAbonos = row[indiceAbonosFinal] || "0";
+        const valorCargos = row[indiceCargosFinal] || "0";
+        const valorSaldo = row[indiceSaldoFinal] || "0";
+        
+        // Procesar valores y determinar abonos/cargos correctos
+        const valorAbonosNum = parseFloat(valorAbonos.toString().replace(/\./g, "")) || 0;
+        const valorCargosNum = parseFloat(valorCargos.toString().replace(/\./g, "")) || 0;
+        
+        // Lógica correcta:
+        // - Columna "Depósitos / Abonos" = abonos (ingresos)
+        // - Columna "Cheques / Cargos" = cargos (gastos), sin importar el signo
+        let abonos = 0;
+        let cargos = 0;
+        
+        // Si hay valor en la columna de abonos, es un abono
+        if (valorAbonosNum !== 0) {
+          abonos = Math.abs(valorAbonosNum); // Usar valor absoluto para abonos
+        }
+        
+        // Si hay valor en la columna de cargos, es un cargo (independientemente del signo)
+        if (valorCargosNum !== 0) {
+          cargos = Math.abs(valorCargosNum); // Usar valor absoluto para cargos
+        }
+        
+        // Debug para verificar el procesamiento
+        if (descripcion.includes('COMISION TRANSACCION INTERNACIONAL') || abonos > 0 || cargos > 0) {
+          console.log('Procesando transacción:', {
+            descripcion,
+            valorAbonosOriginal: valorAbonos,
+            valorCargosOriginal: valorCargos,
+            valorAbonosNum,
+            valorCargosNum,
+            abonosFinal: abonos,
+            cargosFinal: cargos
+          });
+        }
+        
         return {
           Fecha: fecha,
           "N° Operación": row[1],
           Descripción: descripcion,
           Alias: aliasInfo.alias,
           Categoría: aliasInfo.categoria,
-          Abonos: parseFloat((row[3] || "0").toString().replace(/\./g, "")) || 0,
-          Cargos: parseFloat((row[4] || "0").toString().replace(/\./g, "")) || 0,
-          Saldo: parseFloat((row[5] || "0").toString().replace(/\./g, "")) || 0,
+          Abonos: abonos,
+          Cargos: cargos,
+          Saldo: parseFloat((valorSaldo.toString().replace(/\./g, "")) || "0") || 0,
         }
       }).filter(mov => mov.Fecha && !isNaN(mov.Fecha.getTime())); // Filtrar fechas inválidas
 
