@@ -394,8 +394,10 @@
       graficoActual.destroy();
     }
     
-    const fechas = movimientos.map(m => m.Fecha);
-    const saldos = movimientos.map(m => m.Saldo);
+    // Invertir el orden para mostrar del más antiguo al más reciente
+    const movimientosOrdenados = [...movimientos].reverse();
+    const fechas = movimientosOrdenados.map(m => m.Fecha);
+    const saldos = movimientosOrdenados.map(m => m.Saldo);
     
     graficoActual = new Chart(ctx, {
       type: 'line',
