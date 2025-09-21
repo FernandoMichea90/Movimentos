@@ -46,7 +46,7 @@
       <button id="btn-gestionar-alias" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 mr-4">
         Gestionar Alias y Categorías
       </button>
-      <input type="file" id="upload" accept=".xlsx" class="inline-block" />
+      <input type="file" id="upload" accept=".xlsx" multiple class="inline-block" />
     </div>
 
     <!-- Modal para gestionar alias -->
@@ -142,7 +142,15 @@
     <div id="resumen" class="mb-8"></div>
 
     <!-- Resumen de totales -->
-    <div id="totales" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div id="totales" class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+      <div class="bg-gray-100 p-6 rounded-lg shadow text-center">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Saldo Inicial</h3>
+        <p id="saldo-inicial" class="text-2xl font-bold text-gray-600">$0</p>
+      </div>
+      <div class="bg-gray-100 p-6 rounded-lg shadow text-center">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Saldo Final</h3>
+        <p id="saldo-final" class="text-2xl font-bold text-gray-600">$0</p>
+      </div>
       <div class="bg-green-100 p-6 rounded-lg shadow text-center">
         <h3 class="text-lg font-semibold text-green-800 mb-2">Total Abonos</h3>
         <p id="total-abonos" class="text-2xl font-bold text-green-600">$0</p>
@@ -373,9 +381,18 @@
     const totalGastos = movimientos.reduce((sum, m) => sum + m.Cargos, 0);
     const balance = totalAbonos - totalGastos;
     
+    // Calcular saldos inicial y final
+    const saldos = movimientos.map(m => m.Saldo);
+    const saldoInicial = saldos.length > 0 ? saldos[0] : 0; // Primer elemento (más antiguo)
+    const saldoFinal = saldos.length > 0 ? saldos[saldos.length - 1] : 0; // Último elemento (más reciente)
+    
     document.getElementById('total-abonos').textContent = '$' + totalAbonos.toLocaleString('es-CL');
     document.getElementById('total-gastos').textContent = '$' + totalGastos.toLocaleString('es-CL');
     document.getElementById('balance').textContent = '$' + balance.toLocaleString('es-CL');
+    
+    // Actualizar saldos inicial y final en el resumen
+    document.getElementById('saldo-inicial').textContent = '$' + saldoInicial.toLocaleString('es-CL');
+    document.getElementById('saldo-final').textContent = '$' + saldoFinal.toLocaleString('es-CL');
     
     // Cambiar color del balance según si es positivo o negativo
     const balanceElement = document.getElementById('balance');
@@ -394,10 +411,10 @@
       graficoActual.destroy();
     }
     
-    // Invertir el orden para mostrar del más antiguo al más reciente
-    const movimientosOrdenados = [...movimientos].reverse();
-    const fechas = movimientosOrdenados.map(m => m.Fecha);
-    const saldos = movimientosOrdenados.map(m => m.Saldo);
+    // Invertir el orden para el gráfico: Excel empieza con fecha más reciente, gráfico debe mostrar cronológicamente
+    const movimientosGrafico = [...movimientos].reverse();
+    const fechas = movimientosGrafico.map(m => m.Fecha);
+    const saldos = movimientosGrafico.map(m => m.Saldo);
     
     graficoActual = new Chart(ctx, {
       type: 'line',
@@ -673,236 +690,195 @@
   });
 
   document.getElementById('upload').addEventListener('change', function (e) {
-    const file = e.target.files[0];
-    const reader = new FileReader();
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    let allMovements = [];
+    let processedFiles = 0;
+    
+    files.forEach((file) => {
+      const reader = new FileReader();
 
-    reader.onload = async function (event) {
-      // Cargar alias antes de procesar
-      await cargarAlias();
-      
-      const data = new Uint8Array(event.target.result);
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      reader.onload = async function (event) {
+        try {
+          await cargarAlias();
+          
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-      // Buscar el inicio de los datos (donde aparece "Detalle de Movimientos")
-      const startIndex = json.findIndex(row => row.includes("Detalle de Movimientos"));
-      const headersIndex = startIndex + 1;
-      const dataIndex = startIndex + 2;
+          const startIndex = json.findIndex(row => row.includes("Detalle de Movimientos"));
+          const headersIndex = startIndex + 1;
+          const dataIndex = startIndex + 2;
+          const headers = json[headersIndex];
+          
+          const encontrarIndiceColumna = (titulos, palabraClave) => {
+            for (let i = 0; i < titulos.length; i++) {
+              if (titulos[i] && titulos[i].toString().toLowerCase().includes(palabraClave.toLowerCase())) {
+                return i;
+              }
+            }
+            return -1;
+          };
+          
+          const indiceAbonos = encontrarIndiceColumna(headers, 'abono');
+          const indiceCargos = encontrarIndiceColumna(headers, 'cargo');
+          const indiceSaldo = encontrarIndiceColumna(headers, 'saldo');
+          
+          let indiceAbonosFinal = indiceAbonos !== -1 ? indiceAbonos : 4;
+          let indiceCargosFinal = indiceCargos !== -1 ? indiceCargos : 3;
+          let indiceSaldoFinal = indiceSaldo !== -1 ? indiceSaldo : 5;
 
-      const headers = json[headersIndex];
-      
-      // Detectar automáticamente los índices de las columnas
-      const encontrarIndiceColumna = (titulos, palabraClave) => {
-        for (let i = 0; i < titulos.length; i++) {
-          if (titulos[i] && titulos[i].toString().toLowerCase().includes(palabraClave.toLowerCase())) {
-            return i;
-          }
-        }
-        return -1;
-      };
-      
-      const indiceAbonos = encontrarIndiceColumna(headers, 'abono');
-      const indiceCargos = encontrarIndiceColumna(headers, 'cargo');
-      const indiceSaldo = encontrarIndiceColumna(headers, 'saldo');
-      
-      // Fallback para casos donde no se encuentran las columnas
-      let indiceAbonosFinal = indiceAbonos !== -1 ? indiceAbonos : 4;
-      let indiceCargosFinal = indiceCargos !== -1 ? indiceCargos : 3;
-      let indiceSaldoFinal = indiceSaldo !== -1 ? indiceSaldo : 5;
-      
-      // Función para procesar valores financieros
-      const procesarValorFinanciero = (valor) => {
-        if (!valor || valor === "") return 0;
-        const valorLimpio = valor.toString().replace(/\./g, "");
-        const valorNumerico = parseFloat(valorLimpio);
-        return isNaN(valorNumerico) ? 0 : Math.abs(valorNumerico); // Usar valor absoluto
-      };
-      
-      console.log('Índices detectados:', {
-        abonos: indiceAbonos,
-        cargos: indiceCargos,
-        saldo: indiceSaldo,
-        abonosFinal: indiceAbonosFinal,
-        cargosFinal: indiceCargosFinal,
-        saldoFinal: indiceSaldoFinal,
-        headers: headers
-      });
-      
-      console.log('Columnas detectadas:', {
-        columnaAbonos: headers[indiceAbonosFinal] || 'No encontrada',
-        columnaCargos: headers[indiceCargosFinal] || 'No encontrada',
-        columnaSaldo: headers[indiceSaldoFinal] || 'No encontrada'
-      });
-      
-      const rows = json.slice(dataIndex).filter(row => {
-        // Solo incluir filas que tengan fecha válida y no contengan "saldo"
-        const fechaStr = row[0];
-        return fechaStr && 
-               String(fechaStr).trim() !== "" && 
-               !String(fechaStr).toLowerCase().includes("saldo") &&
-               (fechaStr.includes("/") || fechaStr.includes("-"));
-      });
-
-      const movimientos = rows.map(row => {
-        const fechaStr = row[0];
-        let fecha;
-        
-        // Manejar diferentes formatos de fecha
-        if (fechaStr.includes("/")) {
-          // Formato DD/MM o DD/MM/YYYY
-          const partes = fechaStr.split("/");
-          if (partes.length === 2) {
-            // Solo día y mes, agregar año actual
-            fecha = new Date(`${partes[1]}/${partes[0]}/2024`);
-          } else if (partes.length === 3) {
-            // Día, mes y año completos
-            fecha = new Date(`${partes[1]}/${partes[0]}/${partes[2]}`);
-          }
-        } else if (fechaStr.includes("-")) {
-          // Formato YYYY-MM-DD
-          fecha = new Date(fechaStr);
-        }
-        
-        const descripcion = row[2];
-        const aliasInfo = obtenerAliasYCategoria(descripcion);
-        
-        // Obtener valores de las columnas usando índices detectados
-        const valorAbonos = row[indiceAbonosFinal] || "0";
-        const valorCargos = row[indiceCargosFinal] || "0";
-        const valorSaldo = row[indiceSaldoFinal] || "0";
-        
-        // Procesar valores y determinar abonos/cargos correctos
-        const valorAbonosNum = parseFloat(valorAbonos.toString().replace(/\./g, "")) || 0;
-        const valorCargosNum = parseFloat(valorCargos.toString().replace(/\./g, "")) || 0;
-        
-        // Lógica correcta:
-        // - Columna "Depósitos / Abonos" = abonos (ingresos)
-        // - Columna "Cheques / Cargos" = cargos (gastos), sin importar el signo
-        let abonos = 0;
-        let cargos = 0;
-        
-        // Si hay valor en la columna de abonos, es un abono
-        if (valorAbonosNum !== 0) {
-          abonos = Math.abs(valorAbonosNum); // Usar valor absoluto para abonos
-        }
-        
-        // Si hay valor en la columna de cargos, es un cargo (independientemente del signo)
-        if (valorCargosNum !== 0) {
-          cargos = Math.abs(valorCargosNum); // Usar valor absoluto para cargos
-        }
-        
-        // Debug para verificar el procesamiento
-        if (descripcion.includes('COMISION TRANSACCION INTERNACIONAL') || abonos > 0 || cargos > 0) {
-          console.log('Procesando transacción:', {
-            descripcion,
-            valorAbonosOriginal: valorAbonos,
-            valorCargosOriginal: valorCargos,
-            valorAbonosNum,
-            valorCargosNum,
-            abonosFinal: abonos,
-            cargosFinal: cargos
+          const rows = json.slice(dataIndex).filter(row => {
+            const fechaStr = row[0];
+            return fechaStr && 
+                   String(fechaStr).trim() !== "" && 
+                   !String(fechaStr).toLowerCase().includes("saldo") &&
+                   (fechaStr.includes("/") || fechaStr.includes("-"));
           });
-        }
-        
-        return {
-          Fecha: fecha,
-          "N° Operación": row[1],
-          Descripción: descripcion,
-          Alias: aliasInfo.alias,
-          Categoría: aliasInfo.categoria,
-          Abonos: abonos,
-          Cargos: cargos,
-          Saldo: parseFloat((valorSaldo.toString().replace(/\./g, "")) || "0") || 0,
-        }
-      }).filter(mov => mov.Fecha && !isNaN(mov.Fecha.getTime())); // Filtrar fechas inválidas
 
-      // Guardar movimientos globalmente para los gráficos
-      movimientosGlobales = movimientos;
+          const movimientos = rows.map(row => {
+            const fechaStr = row[0];
+            let fecha;
+            
+            if (fechaStr.includes("/")) {
+              const partes = fechaStr.split("/");
+              if (partes.length === 2) {
+                fecha = new Date(`${partes[1]}/${partes[0]}/2024`);
+              } else if (partes.length === 3) {
+                fecha = new Date(`${partes[1]}/${partes[0]}/${partes[2]}`);
+              }
+            } else if (fechaStr.includes("-")) {
+              fecha = new Date(fechaStr);
+            }
+            
+            const descripcion = row[2];
+            const aliasInfo = obtenerAliasYCategoria(descripcion);
+            
+            const valorAbonos = row[indiceAbonosFinal] || "0";
+            const valorCargos = row[indiceCargosFinal] || "0";
+            const valorSaldo = row[indiceSaldoFinal] || "0";
+            
+            const valorAbonosNum = parseFloat(valorAbonos.toString().replace(/\./g, "")) || 0;
+            const valorCargosNum = parseFloat(valorCargos.toString().replace(/\./g, "")) || 0;
+            
+            let abonos = 0;
+            let cargos = 0;
+            
+            if (valorAbonosNum !== 0) {
+              abonos = Math.abs(valorAbonosNum);
+            }
+            
+            if (valorCargosNum !== 0) {
+              cargos = Math.abs(valorCargosNum);
+            }
+            
+            return {
+              Fecha: fecha,
+              "N° Operación": row[1],
+              Descripción: descripcion,
+              Alias: aliasInfo.alias,
+              Categoría: aliasInfo.categoria,
+              Abonos: abonos,
+              Cargos: cargos,
+              Saldo: parseFloat((valorSaldo.toString().replace(/\./g, "")) || "0") || 0
+            }
+          }).filter(mov => mov.Fecha && !isNaN(mov.Fecha.getTime()));
 
-      // Actualizar totales
-      actualizarTotales(movimientos);
+          // Agregar movimientos a la lista total
+          allMovements = allMovements.concat(movimientos);
+          processedFiles++;
 
-      // Crear gráfico lineal por defecto
-      actualizarBotonesGraficos('btn-grafico-lineal');
-      crearGraficoLineal(movimientos);
+          // Si se procesaron todos los archivos, actualizar la interfaz
+          if (processedFiles === files.length) {
+            // NO ordenar por fecha - mantener el orden original del Excel para que los saldos cuadren
+            // Guardar movimientos globalmente para los gráficos
+            movimientosGlobales = allMovements;
 
-      // Tabla movimientos
-      const tabla = document.getElementById('tabla-movimientos');
-      tabla.innerHTML = `
-        <thead class="bg-blue-100">
-          <tr>
-            <th class="border px-2 py-1">Fecha</th>
-            <th class="border px-2 py-1">N° Operación</th>
-            <th class="border px-2 py-1">Descripción</th>
-            <th class="border px-2 py-1">Alias</th>
-            <th class="border px-2 py-1">Categoría</th>
-            <th class="border px-2 py-1">Abonos</th>
-            <th class="border px-2 py-1">Cargos</th>
-            <th class="border px-2 py-1">Saldo</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${movimientos.map(row => `<tr>
-            <td class="border px-2 py-1">${row.Fecha.toLocaleDateString()}</td>
-            <td class="border px-2 py-1">${row["N° Operación"]}</td>
-            <td class="border px-2 py-1 text-xs">${row.Descripción}</td>
-            <td class="border px-2 py-1 font-semibold text-blue-600">${row.Alias}</td>
-            <td class="border px-2 py-1">
-              <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${row.Categoría}</span>
-            </td>
-            <td class="border px-2 py-1">${row.Abonos.toLocaleString('es-CL')}</td>
-            <td class="border px-2 py-1">${row.Cargos.toLocaleString('es-CL')}</td>
-            <td class="border px-2 py-1">${row.Saldo.toLocaleString('es-CL')}</td>
-          </tr>`).join('')}
-        </tbody>`;
+            // Actualizar totales
+            actualizarTotales(allMovements);
 
-      // Agrupar por descripción
-      const agrupados = {};
-      movimientos.forEach(m => {
-        const key = m.Descripción || "Sin descripción";
-        if (!agrupados[key]) agrupados[key] = { 
-          descripcion: key, 
-          alias: m.Alias,
-          categoria: m.Categoría,
-          cargos: 0, 
-          abonos: 0, 
-          cantidad: 0 
-        };
-        agrupados[key].cargos += m.Cargos;
-        agrupados[key].abonos += m.Abonos;
-        agrupados[key].cantidad++;
-      });
-      const resumenArray = Object.values(agrupados);
-      const tablaDesc = document.getElementById('tabla-descripcion');
-      tablaDesc.innerHTML = `
-        <thead class="bg-blue-100">
-          <tr>
-            <th class="border px-2 py-1">Descripción</th>
-            <th class="border px-2 py-1">Alias</th>
-            <th class="border px-2 py-1">Categoría</th>
-            <th class="border px-2 py-1">Total Cargos</th>
-            <th class="border px-2 py-1">Total Abonos</th>
-            <th class="border px-2 py-1">Cantidad</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${resumenArray.map(r => `
-            <tr>
-              <td class="border px-2 py-1 text-xs">${r.descripcion}</td>
-              <td class="border px-2 py-1 font-semibold text-blue-600">${r.alias}</td>
-              <td class="border px-2 py-1">
-                <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${r.categoria}</span>
-              </td>
-              <td class="border px-2 py-1">${r.cargos.toLocaleString('es-CL')}</td>
-              <td class="border px-2 py-1">${r.abonos.toLocaleString('es-CL')}</td>
-              <td class="border px-2 py-1 text-center">${r.cantidad}</td>
-            </tr>`).join('')}
-        </tbody>`;
+            // Crear gráfico lineal por defecto (orden cronológico: antiguo a reciente)
+            actualizarBotonesGraficos('btn-grafico-lineal');
+            crearGraficoLineal(allMovements);
 
-      // Agrupar por categoría
-      const agrupadosCategoria = {};
-      movimientos.forEach(m => {
+            // Tabla movimientos (mantener orden original del Excel)
+            const tabla = document.getElementById('tabla-movimientos');
+            tabla.innerHTML = `
+              <thead class="bg-blue-100">
+                <tr>
+                  <th class="border px-2 py-1">Fecha</th>
+                  <th class="border px-2 py-1">N° Operación</th>
+                  <th class="border px-2 py-1">Descripción</th>
+                  <th class="border px-2 py-1">Alias</th>
+                  <th class="border px-2 py-1">Categoría</th>
+                  <th class="border px-2 py-1">Abonos</th>
+                  <th class="border px-2 py-1">Cargos</th>
+                  <th class="border px-2 py-1">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allMovements.map(row => `<tr>
+                  <td class="border px-2 py-1">${row.Fecha.toLocaleDateString()}</td>
+                  <td class="border px-2 py-1">${row["N° Operación"]}</td>
+                  <td class="border px-2 py-1 text-xs">${row.Descripción}</td>
+                  <td class="border px-2 py-1 font-semibold text-blue-600">${row.Alias}</td>
+                  <td class="border px-2 py-1">
+                    <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${row.Categoría}</span>
+                  </td>
+                  <td class="border px-2 py-1">${row.Abonos.toLocaleString('es-CL')}</td>
+                  <td class="border px-2 py-1">${row.Cargos.toLocaleString('es-CL')}</td>
+                  <td class="border px-2 py-1">${row.Saldo.toLocaleString('es-CL')}</td>
+                </tr>`).join('')}
+              </tbody>`;
+
+            // Agrupar por descripción
+            const agrupados = {};
+            allMovements.forEach(m => {
+              const key = m.Descripción || "Sin descripción";
+              if (!agrupados[key]) agrupados[key] = { 
+                descripcion: key, 
+                alias: m.Alias,
+                categoria: m.Categoría,
+                cargos: 0, 
+                abonos: 0, 
+                cantidad: 0 
+              };
+              agrupados[key].cargos += m.Cargos;
+              agrupados[key].abonos += m.Abonos;
+              agrupados[key].cantidad++;
+            });
+            const resumenArray = Object.values(agrupados);
+            const tablaDesc = document.getElementById('tabla-descripcion');
+            tablaDesc.innerHTML = `
+              <thead class="bg-blue-100">
+                <tr>
+                  <th class="border px-2 py-1">Descripción</th>
+                  <th class="border px-2 py-1">Alias</th>
+                  <th class="border px-2 py-1">Categoría</th>
+                  <th class="border px-2 py-1">Total Cargos</th>
+                  <th class="border px-2 py-1">Total Abonos</th>
+                  <th class="border px-2 py-1">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${resumenArray.map(r => `
+                  <tr>
+                    <td class="border px-2 py-1 text-xs">${r.descripcion}</td>
+                    <td class="border px-2 py-1 font-semibold text-blue-600">${r.alias}</td>
+                    <td class="border px-2 py-1">
+                      <span class="px-2 py-1 rounded-full text-xs bg-gray-200">${r.categoria}</span>
+                    </td>
+                    <td class="border px-2 py-1">${r.cargos.toLocaleString('es-CL')}</td>
+                    <td class="border px-2 py-1">${r.abonos.toLocaleString('es-CL')}</td>
+                    <td class="border px-2 py-1 text-center">${r.cantidad}</td>
+                  </tr>`).join('')}
+              </tbody>`;
+
+            // Agrupar por categoría
+            const agrupadosCategoria = {};
+            allMovements.forEach(m => {
         const categoria = m.Categoría || "Sin categorizar";
         if (!agrupadosCategoria[categoria]) agrupadosCategoria[categoria] = { 
           categoria: categoria,
@@ -914,6 +890,7 @@
         agrupadosCategoria[categoria].abonos += m.Abonos;
         agrupadosCategoria[categoria].cantidad++;
       });
+      const totalCargos = resumenArray.reduce((a, b) => a + b.cargos, 0);
       const resumenCategoria = Object.values(agrupadosCategoria).sort((a, b) => b.cargos - a.cargos);
       const tablaCategoria = document.getElementById('tabla-categoria');
       tablaCategoria.innerHTML = `
@@ -942,21 +919,15 @@
           }).join('')}
         </tbody>`;
 
-      // Resumen general
-      const totalCargos = resumenArray.reduce((a, b) => a + b.cargos, 0);
-      const totalAbonos = resumenArray.reduce((a, b) => a + b.abonos, 0);
-      const saldoFinal = saldos[0];
-      const saldoInicial = saldos[saldos.length - 1];
-      document.getElementById('resumen').innerHTML = `
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div class="bg-white p-4 rounded shadow"><strong>Saldo Inicial:</strong><br>$${saldoInicial.toLocaleString('es-CL')}</div>
-          <div class="bg-white p-4 rounded shadow"><strong>Saldo Final:</strong><br>$${saldoFinal.toLocaleString('es-CL')}</div>
-          <div class="bg-white p-4 rounded shadow"><strong>Total Cargos:</strong><br>$${totalCargos.toLocaleString('es-CL')}</div>
-          <div class="bg-white p-4 rounded shadow"><strong>Total Abonos:</strong><br>$${totalAbonos.toLocaleString('es-CL')}</div>
-        </div>`;
-    };
-
-    reader.readAsArrayBuffer(file);
+          }
+        } catch (error) {
+          console.error('Error procesando archivo:', error);
+          alert('Error al procesar el archivo ' + file.name + ': ' + error.message);
+        }
+      };
+      
+      reader.readAsArrayBuffer(file);
+    });
   });
 
   // Inicializar alias al cargar la página
